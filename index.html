@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emoji Telepathy - 2 Player Match Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            user-select: none;
+        }
+
+        .heading-font {
+            font-family: 'Fredoka', sans-serif;
+        }
+
+        /* Pulse animation for waiting status */
+        @keyframes subtle-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(0.98); }
+        }
+
+        .animate-subtle {
+            animation: subtle-pulse 2s infinite ease-in-out;
+        }
+
+        /* Pop animation for emoji reveal */
+        @keyframes pop-in {
+            0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+            70% { transform: scale(1.15) rotate(5deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+
+        .animate-pop {
+            animation: pop-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Card container frame inspired by sketch */
+        .sketch-frame {
+            border: 4px solid #334155;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.05);
+        }
+
+        /* Confetti Burst */
+        .emoji-burst {
+            position: absolute;
+            pointer-events: none;
+            animation: float-up 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        @keyframes float-up {
+            0% { opacity: 1; transform: translate(0, 0) scale(0.5); }
+            100% { opacity: 0; transform: translate(var(--tw-translate-x), var(--tw-translate-y)) scale(1.8); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-3 sm:p-6 overflow-x-hidden">
+
+    <!-- Header / App Container -->
+    <div class="w-full max-w-md mx-auto flex flex-col h-full space-y-4">
+        
+        <!-- Header Controls -->
+        <header class="flex items-center justify-between bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-2xl p-3 px-4 shadow-lg">
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl">✨</span>
+                <div>
+                    <h1 class="heading-font text-lg font-bold tracking-wide text-amber-400">EMOJI MATCH</h1>
+                    <p class="text-[10px] text-slate-400 font-semibold tracking-wider uppercase" id="game-status-subtitle">Mind Reader Mode</p>
+                </div>
+            </div>
+            <div id="room-badge" class="hidden flex items-center bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 cursor-pointer hover:border-amber-500/50 transition" onclick="copyRoomLink()">
+                <div class="text-right">
+                    <div class="text-[9px] uppercase tracking-wider text-slate-400 font-bold">Room Code</div>
+                    <div class="font-mono text-sm font-bold text-amber-400 flex items-center gap-1">
+                        <span id="display-room-code">----</span>
+                        <i data-lucide="copy" class="w-3 h-3 text-slate-400"></i>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- LOBBY SCREEN (Create / Join) -->
+        <div id="lobby-screen" class="bg-slate-800/90 border border-slate-700 rounded-3xl p-6 shadow-2xl flex flex-col space-y-6 my-auto">
+            <div class="text-center space-y-2">
+                <div class="text-5xl my-2">🔮</div>
+                <h2 class="heading-font text-2xl font-bold text-white">Can You Telepathically Match?</h2>
+                <p class="text-sm text-slate-400">Pick an emoji simultaneously with a friend. Match your choices without talking!</p>
+            </div>
+
+            <!-- Host/Join Tabs -->
+            <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900/80 rounded-xl border border-slate-700/50">
+                <button id="tab-create-btn" onclick="switchLobbyTab('create')" class="py-2.5 text-xs font-bold rounded-lg transition bg-amber-500 text-slate-950">Create Room</button>
+                <button id="tab-join-btn" onclick="switchLobbyTab('join')" class="py-2.5 text-xs font-bold rounded-lg transition text-slate-400 hover:text-white">Join Room</button>
+            </div>
+
+            <!-- Create View -->
+            <div id="create-view" class="space-y-4">
+                <button onclick="window.createRoom()" class="w-full py-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 heading-font font-bold text-lg rounded-2xl shadow-lg shadow-amber-500/20 active:scale-98 transition flex items-center justify-center gap-2">
+                    <i data-lucide="plus-circle" class="w-5 h-5"></i> Start New Game
+                </button>
+            </div>
+
+            <!-- Join View -->
+            <div id="join-view" class="space-y-4 hidden">
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">4-Digit Room Code</label>
+                    <input type="text" id="join-code-input" maxlength="4" placeholder="e.g. 8821" class="w-full bg-slate-900 border border-slate-700 text-center font-mono text-xl tracking-widest py-3 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-amber-400 transition uppercase" oninput="this.value = this.value.toUpperCase()">
+                </div>
+                <button onclick="joinRoom()" class="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 heading-font font-bold text-lg rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-98 transition flex items-center justify-center gap-2">
+                    <i data-lucide="log-in" class="w-5 h-5"></i> Join Room
+                </button>
+            </div>
+
+            <!-- Quick Info -->
+            <div class="text-center text-xs text-slate-500 flex items-center justify-center gap-1">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i> Real-time multiplayer synchronized
+            </div>
+        </div>
+
+        <!-- MAIN GAMEPLAY BOARD (Matches Sketch Layout) -->
+        <div id="game-screen" class="hidden flex-col space-y-4">
+            
+            <!-- SKETCH CONTAINER BOX -->
+            <div class="sketch-frame bg-slate-800/90 rounded-3xl overflow-hidden flex flex-col relative">
+                
+                <!-- TOP HALF: PLAYERS MATCH DISPLAY (As drawn in the sketch) -->
+                <div class="grid grid-cols-2 relative bg-slate-900/60 divide-x divide-slate-700/80 min-h-[190px]">
+                    
+                    <!-- Player 1 (Host) Card -->
+                    <div class="p-4 flex flex-col items-center justify-between relative">
+                        <div class="w-full flex items-center justify-between text-xs">
+                            <span id="p1-label" class="font-bold text-slate-400 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-slate-600" id="p1-dot"></span> Player 1
+                            </span>
+                            <span id="p1-you-tag" class="hidden bg-amber-400/10 text-amber-400 border border-amber-400/30 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">YOU</span>
+                        </div>
+
+                        <!-- Player 1 Emoji Area -->
+                        <div class="my-auto flex flex-col items-center justify-center py-2" id="p1-display-container">
+                            <!-- Face Outline / Hidden State / Revealed Emoji -->
+                            <div id="p1-emoji-slot" class="w-20 h-20 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center text-4xl transition-all">
+                                <span class="text-slate-600 text-3xl">👤</span>
+                            </div>
+                        </div>
+
+                        <div id="p1-status" class="text-xs font-semibold text-slate-500 text-center">Thinking...</div>
+                    </div>
+
+                    <!-- Player 2 (Guest) Card -->
+                    <div class="p-4 flex flex-col items-center justify-between relative">
+                        <div class="w-full flex items-center justify-between text-xs">
+                            <span id="p2-label" class="font-bold text-slate-400 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-slate-600" id="p2-dot"></span> Player 2
+                            </span>
+                            <span id="p2-you-tag" class="hidden bg-indigo-400/10 text-indigo-400 border border-indigo-400/30 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">YOU</span>
+                        </div>
+
+                        <!-- Player 2 Emoji Area -->
+                        <div class="my-auto flex flex-col items-center justify-center py-2" id="p2-display-container">
+                            <!-- Face Outline / Hidden State / Revealed Emoji -->
+                            <div id="p2-emoji-slot" class="w-20 h-20 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center text-4xl transition-all">
+                                <span class="text-slate-600 text-3xl">👤</span>
+                            </div>
+                        </div>
+
+                        <div id="p2-status" class="text-xs font-semibold text-slate-500 text-center">Waiting...</div>
+                    </div>
+
+                    <!-- REVEAL OVERLAY BANNER (Shows when both picked) -->
+                    <div id="result-banner" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-20 flex-col items-center justify-center p-4 animate-pop">
+                        <div id="result-title" class="heading-font text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500 drop-shadow mb-1">
+                            IT'S A MATCH! 🎉
+                        </div>
+                        <p id="result-desc" class="text-xs text-slate-300 mb-4 font-medium">Both of you picked the exact same emoji!</p>
+                        
+                        <button onclick="nextRound()" class="px-6 py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 heading-font font-bold text-sm rounded-xl shadow-lg active:scale-95 transition flex items-center gap-2">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Next Round
+                        </button>
+                    </div>
+                </div>
+
+                <!-- MIDDLE SEPARATOR BAR (Match Score Counter) -->
+                <div class="bg-slate-900 border-y border-slate-700/80 px-4 py-2 flex items-center justify-between text-xs">
+                    <div class="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Scoreboard</div>
+                    <div class="flex items-center space-x-3 font-bold font-mono">
+                        <span class="text-emerald-400 flex items-center gap-1">
+                            <i data-lucide="trophy" class="w-3.5 h-3.5"></i> <span id="score-matches">0</span> Matches
+                        </span>
+                        <span class="text-slate-600">•</span>
+                        <span class="text-slate-400">Round <span id="score-rounds">1</span></span>
+                    </div>
+                </div>
+
+                <!-- BOTTOM HALF: "EMOJIS HERE" GRID (As drawn in sketch) -->
+                <div class="p-4 bg-slate-800/80 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="heading-font text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>👇</span> Select Your Emoji:
+                        </h3>
+                        <span id="pick-hint" class="text-[11px] text-amber-400/90 font-medium">Tap one emoji below</span>
+                    </div>
+
+                    <!-- Grid of Emojis -->
+                    <div id="emoji-grid" class="grid grid-cols-4 gap-2.5 sm:gap-3">
+                        <!-- Emoji buttons generated dynamically -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Waiting for player info / share banner -->
+            <div id="waiting-opponent-card" class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between text-xs">
+                <div class="flex items-center gap-2 text-amber-300">
+                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-amber-400"></i>
+                    <span>Waiting for Player 2 to join...</span>
+                </div>
+                <button onclick="copyRoomLink()" class="bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs hover:bg-amber-300 transition flex items-center gap-1">
+                    <i data-lucide="share-2" class="w-3 h-3"></i> Share
+                </button>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex justify-between items-center text-xs text-slate-500 px-1">
+                <button onclick="leaveRoom()" class="hover:text-slate-300 transition flex items-center gap-1">
+                    <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Leave Room
+                </button>
+                <button onclick="toggleAudio()" id="audio-btn" class="hover:text-slate-300 transition flex items-center gap-1">
+                    <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Sound: ON
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl opacity-0 transition-all pointer-events-none z-50 flex items-center gap-2">
+        <i data-lucide="info" class="w-4 h-4 text-amber-400"></i>
+        <span id="toast-message">Message text</span>
+    </div>
+
+    <!-- Firebase SDK Modules -->
+    <script type="module">
+		import { initializeApp } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
+		import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-analytics.js";
+
+		import {
+		    getAuth,
+		    signInAnonymously,
+		    signInWithCustomToken,
+		    onAuthStateChanged
+		} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+
+		import {
+		    getFirestore,
+		    doc,
+		    setDoc,
+		    getDoc,
+		    updateDoc,
+		    onSnapshot
+		} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
+        // Global Firebase Configuration Setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'emoji-match-game';
+		const firebaseConfig = {
+		    apiKey: "AIzaSyDLcrGdm7wnvLyFtOUMK1P5Skf_yWj0PXA",
+		    authDomain: "emojimatch-48bcd.firebaseapp.com",
+		    projectId: "emojimatch-48bcd",
+		    storageBucket: "emojimatch-48bcd.firebasestorage.app",
+		    messagingSenderId: "224186055198",
+		    appId: "1:224186055198:web:2e834c9cfaf4a50da58c0f",
+		    measurementId: "G-9J5ZYREMX0"
+		};
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Sound Audio Synthesizer (Web Audio API - No external files needed)
+        class SoundFX {
+            constructor() {
+                this.enabled = true;
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+            }
+
+            playPop() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+                
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.08);
+                
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playMatchSound() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, index) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + index * 0.08);
+                    
+                    gain.gain.setValueAtTime(0, this.ctx.currentTime + index * 0.08);
+                    gain.gain.linearRampToValueAtTime(0.2, this.ctx.currentTime + index * 0.08 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + index * 0.08 + 0.3);
+                    
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    
+                    osc.start(this.ctx.currentTime + index * 0.08);
+                    osc.stop(this.ctx.currentTime + index * 0.08 + 0.3);
+                });
+            }
+
+            playNoMatchSound() {
+                if (!this.enabled) return;
+                this.init();
+                if (!this.ctx) return;
+
+                const notes = [300, 260];
+                notes.forEach((freq, index) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + index * 0.12);
+                    
+                    gain.gain.setValueAtTime(0.15, this.ctx.currentTime + index * 0.12);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + index * 0.12 + 0.15);
+                    
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    
+                    osc.start(this.ctx.currentTime + index * 0.12);
+                    osc.stop(this.ctx.currentTime + index * 0.12 + 0.15);
+                });
+            }
+        }
+
+        const sound = new SoundFX();
+
+        // Game State Variables
+        let currentUser = null;
+        let currentRoomId = null;
+        let playerRole = null; // 'p1' or 'p2'
+        let roomUnsubscribe = null;
+        let currentRoomData = null;
+
+        // Emoji Preset List
+        const EMOJI_LIST = [
+            '😀', '😂', '😍', '😎', 
+            '🤔', '🔥', '🎉', '😜', 
+            '🤯', '👍', '🙈', '🚀', 
+            '💩', '🦄', '👻', '🍕'
+        ];
+
+        // Initialize Lucide Icons
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            renderEmojiGrid();
+            checkUrlForRoomCode();
+        });
+
+        // Authenticate anonymously or via custom token
+		async function authenticateUser() {
+		    try {
+		        const result = await signInAnonymously(auth);
+
+		        currentUser = result.user;
+
+		        console.log("Authenticated:", currentUser.uid);
+
+		        return currentUser;
+
+		    } catch (error) {
+		        console.error("Auth error:", error);
+		        throw error;
+		    }
+		}
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+            }
+        });
+
+        // Firestore Room Path Helper (RULE 1 Compliant)
+        function getRoomDocRef(roomId) {
+            return doc(db, 'artifacts', appId, 'public', 'data', 'emoji_rooms', roomId);
+        }
+
+        // Render Emoji Options Grid
+        function renderEmojiGrid() {
+            const grid = document.getElementById('emoji-grid');
+            grid.innerHTML = '';
+            
+            EMOJI_LIST.forEach((emoji) => {
+                const btn = document.createElement('button');
+                btn.className = `emoji-btn bg-slate-900/90 hover:bg-slate-700/80 border border-slate-700/70 hover:border-amber-400/60 rounded-2xl p-3 text-3xl transition-all duration-150 transform hover:scale-105 active:scale-95 flex items-center justify-center shadow-md`;
+                btn.innerHTML = emoji;
+                btn.onclick = () => selectEmoji(emoji, btn);
+                grid.appendChild(btn);
+            });
+        }
+
+        // Tab Switching for Lobby
+        window.switchLobbyTab = function(tab) {
+            const createBtn = document.getElementById('tab-create-btn');
+            const joinBtn = document.getElementById('tab-join-btn');
+            const createView = document.getElementById('create-view');
+            const joinView = document.getElementById('join-view');
+
+            if (tab === 'create') {
+                createBtn.className = "py-2.5 text-xs font-bold rounded-lg transition bg-amber-500 text-slate-950 shadow";
+                joinBtn.className = "py-2.5 text-xs font-bold rounded-lg transition text-slate-400 hover:text-white";
+                createView.classList.remove('hidden');
+                joinView.classList.add('hidden');
+            } else {
+                joinBtn.className = "py-2.5 text-xs font-bold rounded-lg transition bg-amber-500 text-slate-950 shadow";
+                createBtn.className = "py-2.5 text-xs font-bold rounded-lg transition text-slate-400 hover:text-white";
+                joinView.classList.remove('hidden');
+                createView.classList.add('hidden');
+            }
+        }
+
+
+		window.createRoom = async function() {
+		    try {
+		        console.log("1. Create room started");
+
+		        if (!currentUser) {
+		            console.log("2. Authenticating...");
+		            currentUser = await authenticateUser();
+		        }
+
+		        console.log("3. User:", currentUser);
+
+		        if (!currentUser?.uid) {
+		            throw new Error("No authenticated Firebase user.");
+		        }
+
+		        const code = Math.floor(1000 + Math.random() * 9000).toString();
+
+		        currentRoomId = code;
+		        playerRole = 'p1';
+
+		        const roomData = {
+		            roomId: code,
+		            p1Id: currentUser.uid,
+		            p2Id: null,
+		            p1Pick: null,
+		            p2Pick: null,
+		            p1Ready: false,
+		            p2Ready: false,
+		            matches: 0,
+		            rounds: 1,
+		            status: 'waiting',
+		            createdAt: Date.now()
+		        };
+
+		        console.log("4. Room data:", roomData);
+
+		        const roomRef = getRoomDocRef(code);
+
+		        console.log("5. Room reference:", roomRef);
+
+		        console.log("6. Writing to Firestore...");
+
+		        await setDoc(roomRef, roomData);
+
+		        console.log("7. Firestore write successful!");
+
+		        joinRoomSession(code);
+
+		        console.log("8. Joined room session!");
+
+		        showToast(`Room #${code} created!`);
+
+		    } catch (err) {
+		        console.error("CREATE ROOM FAILED:", err);
+		        alert("Error: " + err.code + "\n" + err.message);
+		    }
+		};
+
+        // Join Room by 4-Digit Code (Player 2)
+        window.joinRoom = async function() {
+            const codeInput = document.getElementById('join-code-input').value.trim();
+            if (codeInput.length !== 4) {
+                showToast("Please enter a valid 4-digit code.");
+                return;
+            }
+
+            if (!currentUser) await authenticateUser();
+
+            const roomRef = getRoomDocRef(codeInput);
+            try {
+                const docSnap = await getDoc(roomRef);
+                if (!docSnap.exists()) {
+                    showToast("Room not found! Check code.");
+                    return;
+                }
+
+                const data = docSnap.data();
+                currentRoomId = codeInput;
+
+                if (data.p1Id === (currentUser ? currentUser.uid : 'p1_guest')) {
+                    playerRole = 'p1';
+                } else if (!data.p2Id || data.p2Id === (currentUser ? currentUser.uid : 'p2_guest')) {
+                    playerRole = 'p2';
+                    await updateDoc(roomRef, {
+                        p2Id: currentUser ? currentUser.uid : 'p2_guest',
+                        status: 'active'
+                    });
+                } else {
+                    showToast("Room is full!");
+                    return;
+                }
+
+                joinRoomSession(codeInput);
+            } catch (err) {
+                console.error("Join room error:", err);
+                showToast("Error joining room.");
+            }
+        };
+
+        // Check URL parameters for shareable code link ?room=1234
+        function checkUrlForRoomCode() {
+            const params = new URLSearchParams(window.location.search);
+            const roomParam = params.get('room');
+            if (roomParam && roomParam.length === 4) {
+                document.getElementById('join-code-input').value = roomParam;
+                switchLobbyTab('join');
+            }
+        }
+
+        // Join Room Real-time Listener Loop
+        function joinRoomSession(code) {
+            document.getElementById('lobby-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('game-screen').classList.add('flex');
+            document.getElementById('room-badge').classList.remove('hidden');
+            document.getElementById('display-room-code').textContent = code;
+
+            // Highlight player identity
+            if (playerRole === 'p1') {
+                document.getElementById('p1-you-tag').classList.remove('hidden');
+                document.getElementById('p2-you-tag').classList.add('hidden');
+            } else {
+                document.getElementById('p2-you-tag').classList.remove('hidden');
+                document.getElementById('p1-you-tag').classList.add('hidden');
+            }
+
+            // Listen for room updates (RULE 1 & RULE 2 compliant)
+            const roomRef = getRoomDocRef(code);
+            roomUnsubscribe = onSnapshot(roomRef, (snapshot) => {
+                if (!snapshot.exists()) {
+                    showToast("Room closed by host.");
+                    leaveRoom();
+                    return;
+                }
+                const data = snapshot.data();
+                currentRoomData = data;
+                updateGameUI(data);
+            }, (error) => {
+                console.error("Snapshot error:", error);
+            });
+        }
+
+        // Render UI state based on Firebase document updates
+        function updateGameUI(data) {
+            // Update score
+            document.getElementById('score-matches').textContent = data.matches || 0;
+            document.getElementById('score-rounds').textContent = data.rounds || 1;
+
+            // Waiting player banner
+            const waitingBanner = document.getElementById('waiting-opponent-card');
+            if (!data.p2Id) {
+                waitingBanner.classList.remove('hidden');
+                waitingBanner.classList.add('flex');
+            } else {
+                waitingBanner.classList.add('hidden');
+                waitingBanner.classList.remove('flex');
+            }
+
+            // Connection dots
+            document.getElementById('p1-dot').className = `w-2 h-2 rounded-full ${data.p1Id ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-600'}`;
+            document.getElementById('p2-dot').className = `w-2 h-2 rounded-full ${data.p2Id ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-600'}`;
+
+            const p1Slot = document.getElementById('p1-emoji-slot');
+            const p2Slot = document.getElementById('p2-emoji-slot');
+            const p1Status = document.getElementById('p1-status');
+            const p2Status = document.getElementById('p2-status');
+
+            // --- REVEAL STATE ---
+            if (data.p1Ready && data.p2Ready) {
+                // Both picked -> Reveal choices synchronously
+                p1Slot.className = "w-20 h-20 rounded-full bg-slate-800 border-2 border-amber-400 flex items-center justify-center text-5xl shadow-lg shadow-amber-400/20 animate-pop";
+                p1Slot.innerHTML = data.p1Pick;
+
+                p2Slot.className = "w-20 h-20 rounded-full bg-slate-800 border-2 border-indigo-400 flex items-center justify-center text-5xl shadow-lg shadow-indigo-400/20 animate-pop";
+                p2Slot.innerHTML = data.p2Pick;
+
+                p1Status.textContent = "Choice Revealed!";
+                p1Status.className = "text-xs font-bold text-amber-400";
+                p2Status.textContent = "Choice Revealed!";
+                p2Status.className = "text-xs font-bold text-indigo-400";
+
+                // Show result modal banner
+                const isMatch = (data.p1Pick === data.p2Pick);
+                showResultBanner(isMatch);
+                return;
+            }
+
+            // Hide banner when not in reveal state
+            document.getElementById('result-banner').classList.add('hidden');
+            document.getElementById('result-banner').classList.remove('flex');
+
+            // --- PLAYER 1 PICK STATE ---
+            if (data.p1Ready) {
+                p1Slot.className = "w-20 h-20 rounded-full bg-emerald-950/40 border-2 border-emerald-500/80 flex items-center justify-center text-3xl shadow-inner animate-subtle";
+                p1Slot.innerHTML = `<span class="text-2xl">🔒</span>`;
+                p1Status.textContent = "Ready & Locked 🔒";
+                p1Status.className = "text-xs font-semibold text-emerald-400";
+            } else {
+                p1Slot.className = "w-20 h-20 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center text-4xl";
+                p1Slot.innerHTML = `<span class="text-slate-600 text-3xl">👤</span>`;
+                p1Status.textContent = "Picking...";
+                p1Status.className = "text-xs font-semibold text-slate-500";
+            }
+
+            // --- PLAYER 2 PICK STATE ---
+            if (data.p2Ready) {
+                p2Slot.className = "w-20 h-20 rounded-full bg-emerald-950/40 border-2 border-emerald-500/80 flex items-center justify-center text-3xl shadow-inner animate-subtle";
+                p2Slot.innerHTML = `<span class="text-2xl">🔒</span>`;
+                p2Status.textContent = "Ready & Locked 🔒";
+                p2Status.className = "text-xs font-semibold text-emerald-400";
+            } else {
+                p2Slot.className = "w-20 h-20 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center text-4xl";
+                p2Slot.innerHTML = data.p2Id ? "Picking..." : "Waiting to Join...";
+                p2Status.className = "text-xs font-semibold text-slate-500";
+            }
+
+            // Highlight selected button state locally
+            const myPick = playerRole === 'p1' ? data.p1Pick : data.p2Pick;
+            document.querySelectorAll('.emoji-btn').forEach(btn => {
+                if (myPick && btn.textContent === myPick) {
+                    btn.classList.add('ring-2', 'ring-amber-400', 'bg-amber-400/20', 'border-amber-400');
+                } else {
+                    btn.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-400/20', 'border-amber-400');
+                }
+            });
+        }
+
+        // Handle Emoji Selection by Current Player
+        window.selectEmoji = async function(emoji, buttonElem) {
+            sound.playPop();
+
+            if (!currentRoomId || !currentRoomData) return;
+            if (currentRoomData.p1Ready && currentRoomData.p2Ready) return; // Round complete, wait for next
+
+            const updates = {};
+            if (playerRole === 'p1') {
+                updates.p1Pick = emoji;
+                updates.p1Ready = true;
+            } else if (playerRole === 'p2') {
+                updates.p2Pick = emoji;
+                updates.p2Ready = true;
+            }
+
+            // Check if this action triggers reveal
+            const isP1Ready = playerRole === 'p1' ? true : currentRoomData.p1Ready;
+            const isP2Ready = playerRole === 'p2' ? true : currentRoomData.p2Ready;
+
+            if (isP1Ready && isP2Ready) {
+                const finalP1 = playerRole === 'p1' ? emoji : currentRoomData.p1Pick;
+                const finalP2 = playerRole === 'p2' ? emoji : currentRoomData.p2Pick;
+                
+                if (finalP1 === finalP2) {
+                    updates.matches = (currentRoomData.matches || 0) + 1;
+                }
+            }
+
+            try {
+                await updateDoc(getRoomDocRef(currentRoomId), updates);
+            } catch (err) {
+                console.error("Select emoji error:", err);
+            }
+        };
+
+        // Show Reveal Banner
+        let revealedAudioPlayed = false;
+        function showResultBanner(isMatch) {
+            const banner = document.getElementById('result-banner');
+            const title = document.getElementById('result-title');
+            const desc = document.getElementById('result-desc');
+
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+
+            if (isMatch) {
+                title.textContent = "IT'S A MATCH! 🎉";
+                title.className = "heading-font text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-amber-400 drop-shadow mb-1 animate-bounce";
+                desc.textContent = "Unbelievable telepathy! You both picked the same emoji!";
+                if (!revealedAudioPlayed) {
+                    sound.playMatchSound();
+                    spawnConfetti();
+                    revealedAudioPlayed = true;
+                }
+            } else {
+                title.textContent = "NO MATCH! 😅";
+                title.className = "heading-font text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-amber-400 drop-shadow mb-1";
+                desc.textContent = "Close, but different choices. Try again!";
+                if (!revealedAudioPlayed) {
+                    sound.playNoMatchSound();
+                    revealedAudioPlayed = true;
+                }
+            }
+        }
+
+        // Start Next Round
+        window.nextRound = async function() {
+            if (!currentRoomId || !currentRoomData) return;
+            sound.playPop();
+            revealedAudioPlayed = false;
+
+            try {
+                await updateDoc(getRoomDocRef(currentRoomId), {
+                    p1Pick: null,
+                    p2Pick: null,
+                    p1Ready: false,
+                    p2Ready: false,
+                    rounds: (currentRoomData.rounds || 1) + 1
+                });
+            } catch (err) {
+                console.error("Next round error:", err);
+            }
+        };
+
+        // Leave Current Room
+        window.leaveRoom = function() {
+            if (roomUnsubscribe) roomUnsubscribe();
+            currentRoomId = null;
+            currentRoomData = null;
+            playerRole = null;
+            revealedAudioPlayed = false;
+
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('flex');
+            document.getElementById('lobby-screen').classList.remove('hidden');
+            document.getElementById('room-badge').classList.add('hidden');
+        };
+
+        // Audio Mute Toggle
+        window.toggleAudio = function() {
+            sound.enabled = !sound.enabled;
+            const btn = document.getElementById('audio-btn');
+            btn.innerHTML = sound.enabled 
+                ? `<i data-lucide="volume-2" class="w-3.5 h-3.5"></i> Sound: ON`
+                : `<i data-lucide="volume-x" class="w-3.5 h-3.5"></i> Sound: OFF`;
+            lucide.createIcons();
+        };
+
+        // Copy Room Code / Link to Clipboard
+        window.copyRoomLink = function() {
+            if (!currentRoomId) return;
+            const link = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
+            
+            // Clipboard API with fallbacks
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(link).then(() => {
+                    showToast(`Copied room link: ${currentRoomId}`);
+                }).catch(() => fallbackCopy(currentRoomId));
+            } else {
+                fallbackCopy(currentRoomId);
+            }
+        };
+
+        function fallbackCopy(text) {
+            const input = document.createElement('input');
+            input.value = text;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            showToast(`Copied code: ${text}`);
+        }
+
+        // Floating particle effect for matches
+        function spawnConfetti() {
+            const particles = ['🎉', '✨', '⭐', '🔥', '💫'];
+            const container = document.getElementById('result-banner');
+
+            for (let i = 0; i < 15; i++) {
+                const el = document.createElement('div');
+                el.className = 'emoji-burst text-2xl';
+                el.textContent = particles[Math.floor(Math.random() * particles.length)];
+                
+                const tx = (Math.random() - 0.5) * 240;
+                const ty = (Math.random() - 0.5) * 240 - 50;
+                
+                el.style.setProperty('--tw-translate-x', `${tx}px`);
+                el.style.setProperty('--tw-translate-y', `${ty}px`);
+                el.style.left = '50%';
+                el.style.top = '50%';
+
+                container.appendChild(el);
+                setTimeout(() => el.remove(), 1200);
+            }
+        }
+
+        // Helper Toast Notification
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = msg;
+            toast.classList.remove('opacity-0');
+            toast.classList.add('opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
