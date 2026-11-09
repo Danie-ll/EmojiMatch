@@ -512,47 +512,130 @@
 		    }
 		};
 
-        // Join Room by 4-Digit Code (Player 2)
-        window.joinRoom = async function() {
-            const codeInput = document.getElementById('join-code-input').value.trim();
-            if (codeInput.length !== 4) {
-                showToast("Please enter a valid 4-digit code.");
-                return;
-            }
 
-            if (!currentUser) await authenticateUser();
+		// Join Room by 4-Digit Code (Player 2)
+		window.joinRoom = async function () {
+		    const codeInput = document
+		        .getElementById('join-code-input')
+		        .value.trim();
+		
+		    if (!/^\d{4}$/.test(codeInput)) {
+		        showToast("Please enter a valid 4-digit room code.");
+		        return;
+		    }
+		
+		    try {
+		        // Authenticate the player
+		        if (!currentUser) {
+		            await authenticateUser();
+		        }
+		
+		        if (!currentUser) {
+		            throw new Error("AUTH_FAILED");
+		        }
+		
+		        // Find the room
+		        const roomRef = getRoomDocRef(codeInput);
+		        const docSnap = await getDoc(roomRef);
+		
+		        if (!docSnap.exists()) {
+		            showToast("We couldn't find that room. Please check the 4-digit code and try again.");
+		            return;
+		        }
+		
+		        const data = docSnap.data();
+		
+		        // Determine player role
+		        if (data.p1Id === currentUser.uid) {
+		            playerRole = 'p1';
+		
+		        } else if (!data.p2Id || data.p2Id === currentUser.uid) {
+		            playerRole = 'p2';
+		
+		            await updateDoc(roomRef, {
+		                p2Id: currentUser.uid,
+		                status: 'active'
+		            });
+		
+		        } else {
+		            showToast("This room is already full. Ask the other player to create a new room.");
+		            return;
+		        }
+		
+		        currentRoomId = codeInput;
+		
+		        // Enter the game session
+		        await joinRoomSession(codeInput);
+		
+		    } catch (err) {
+		        console.error("Join room error:", err);
+		
+		        const errorCode = err.code || "";
+		        const errorMessage = err.message || "";
+		
+		        let friendlyMessage;
+		
+		        if (errorMessage === "AUTH_FAILED") {
+		            friendlyMessage =
+		                "We couldn't sign you in. Please refresh the game and try again.";
+		
+		        } else if (
+		            errorCode === "permission-denied" ||
+		            errorCode === "firestore/permission-denied"
+		        ) {
+		            friendlyMessage =
+		                "You don't have permission to join this room. Please ask the room creator to create a new room.";
+		
+		        } else if (
+		            errorCode === "unavailable" ||
+		            errorCode === "firestore/unavailable"
+		        ) {
+		            friendlyMessage =
+		                "The game server isn't responding right now. Please check your internet connection and try again.";
+		
+		        } else if (
+		            errorCode === "unauthenticated" ||
+		            errorCode === "firestore/unauthenticated"
+		        ) {
+		            friendlyMessage =
+		                "Your sign-in session has expired. Please refresh the game and try again.";
+		
+		        } else if (
+		            errorCode === "failed-precondition" ||
+		            errorCode === "firestore/failed-precondition"
+		        ) {
+		            friendlyMessage =
+		                "The game couldn't complete this action because of a server configuration issue. Please try again later.";
+		
+		        } else if (
+		            errorCode === "deadline-exceeded" ||
+		            errorCode === "firestore/deadline-exceeded"
+		        ) {
+		            friendlyMessage =
+		                "The connection is taking too long. Please check your internet and try again.";
+		
+		        } else if (
+		            errorCode === "network-request-failed"
+		        ) {
+		            friendlyMessage =
+		                "We couldn't connect to the game server. Please check your internet connection or try another network.";
+		
+		        } else if (
+		            errorCode === "auth/network-request-failed"
+		        ) {
+		            friendlyMessage =
+		                "We couldn't sign you in because the connection failed. Please check your internet and try again.";
+		
+		        } else {
+		            friendlyMessage =
+		                "Something unexpected prevented you from joining. Please try again. If it continues, send the game creator a screenshot of this message.";
+		        }
+		
+		        showToast(friendlyMessage);
+		    }
+		};
 
-            const roomRef = getRoomDocRef(codeInput);
-            try {
-                const docSnap = await getDoc(roomRef);
-                if (!docSnap.exists()) {
-                    showToast("Room not found! Check code.");
-                    return;
-                }
-
-                const data = docSnap.data();
-                currentRoomId = codeInput;
-
-                if (data.p1Id === (currentUser ? currentUser.uid : 'p1_guest')) {
-                    playerRole = 'p1';
-                } else if (!data.p2Id || data.p2Id === (currentUser ? currentUser.uid : 'p2_guest')) {
-                    playerRole = 'p2';
-                    await updateDoc(roomRef, {
-                        p2Id: currentUser ? currentUser.uid : 'p2_guest',
-                        status: 'active'
-                    });
-                } else {
-                    showToast("Room is full!");
-                    return;
-                }
-
-                joinRoomSession(codeInput);
-            } catch (err) {
-                console.error("Join room error:", err);
-                showToast("Error joining room.");
-            }
-        };
-
+		
         // Check URL parameters for shareable code link ?room=1234
         function checkUrlForRoomCode() {
             const params = new URLSearchParams(window.location.search);
